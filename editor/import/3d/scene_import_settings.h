@@ -64,6 +64,12 @@ class SceneImportSettingsDialog : public ConfirmationDialog {
 		ACTION_CHOOSE_ANIMATION_SAVE_PATHS,
 	};
 
+	enum MaterialType {
+		MATERIAL_TYPE_STANDARD,
+		MATERIAL_TYPE_ORM,
+		MATERIAL_TYPE_SHADER
+	};
+
 	Node *scene = nullptr;
 
 	HSplitContainer *tree_split = nullptr;
@@ -218,6 +224,14 @@ class SceneImportSettingsDialog : public ConfirmationDialog {
 	void _save_dir_callback(const String &p_path);
 
 	int current_action = 0;
+
+	PopupMenu *material_extract_type_menu = nullptr;
+	TreeItem *selected_material_item = nullptr;
+	int selected_material_type = 0;
+
+	void _popup_material_type_change(TreeItem *p_item);
+	void _set_material_type_callback(int p_id);
+	Ref<Texture2D> _get_material_icon(int p_type);
 
 	Vector<TreeItem *> save_path_items;
 

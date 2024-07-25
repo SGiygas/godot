@@ -1276,6 +1276,10 @@ void SceneImportSettingsDialog::_notification(int p_what) {
 			light_1_switch->set_icon(theme_cache.light_1_icon);
 			light_2_switch->set_icon(theme_cache.light_2_icon);
 			light_rotate_switch->set_icon(theme_cache.rotate_icon);
+
+			material_extract_type_menu->set_item_icon(MATERIAL_TYPE_STANDARD, _get_material_icon(MATERIAL_TYPE_STANDARD));
+			material_extract_type_menu->set_item_icon(MATERIAL_TYPE_ORM, _get_material_icon(MATERIAL_TYPE_ORM));
+			material_extract_type_menu->set_item_icon(MATERIAL_TYPE_SHADER, _get_material_icon(MATERIAL_TYPE_SHADER));
 		} break;
 
 		case NOTIFICATION_PROCESS: {
@@ -1334,12 +1338,47 @@ void SceneImportSettingsDialog::_browse_save_callback(Object *p_item, int p_colu
 
 	TreeItem *item = Object::cast_to<TreeItem>(p_item);
 
+	if (current_action == ACTION_EXTRACT_MATERIALS && p_column == 0) {
+		_popup_material_type_change(item);
+		return;
+	}
+
 	String path = item->get_text(1);
 
 	item_save_path->set_current_file(path);
 	save_path_item = item;
 
 	item_save_path->popup_centered_ratio();
+}
+
+void SceneImportSettingsDialog::_popup_material_type_change(TreeItem *p_item) {
+	selected_material_item = p_item;
+	Rect2 bounds = external_path_tree->get_item_rect(selected_material_item, 0, 0);
+	material_extract_type_menu->set_position(external_path_tree->get_screen_position() + bounds.position + Vector2(0, bounds.size.y));
+	material_extract_type_menu->reset_size();
+	material_extract_type_menu->popup();
+}
+
+void SceneImportSettingsDialog::_set_material_type_callback(int p_id) {
+	selected_material_item->set_metadata(1, p_id);
+	selected_material_item->set_button(0, 0, _get_material_icon(p_id));
+}
+
+Ref<Texture2D> SceneImportSettingsDialog::_get_material_icon(int p_type) {
+	switch (p_type) {
+		case MATERIAL_TYPE_STANDARD: {
+			return get_editor_theme_icon(SNAME("StandardMaterial3D"));
+		} break;
+		case MATERIAL_TYPE_ORM: {
+			return get_editor_theme_icon(SNAME("ORMMaterial3D"));
+		} break;
+		case MATERIAL_TYPE_SHADER: {
+			return get_editor_theme_icon(SNAME("ShaderMaterial"));
+		} break;
+		default: {
+			return get_editor_theme_icon(SNAME("StandardMaterial3D"));
+		} break;
+	}
 }
 
 void SceneImportSettingsDialog::_save_dir_callback(const String &p_path) {
@@ -1356,9 +1395,12 @@ void SceneImportSettingsDialog::_save_dir_callback(const String &p_path) {
 
 				String name = md.material_node->get_text(0);
 
+				int default_type = GLOBAL_GET("filesystem/import/default_extracted_material_type");
+
 				item->set_cell_mode(0, TreeItem::CELL_MODE_CHECK);
-				item->set_icon(0, get_editor_theme_icon(SNAME("StandardMaterial3D")));
 				item->set_text(0, name);
+				item->add_button(0, _get_material_icon(default_type));
+				item->set_button_tooltip_text(0, 0, TTR("Change the type of material to extract as."));
 
 				if (md.has_import_id) {
 					if (md.settings.has("use_external/enabled") && bool(md.settings["use_external/enabled"])) {
@@ -1368,6 +1410,7 @@ void SceneImportSettingsDialog::_save_dir_callback(const String &p_path) {
 						item->set_metadata(0, E.key);
 						item->set_editable(0, true);
 						item->set_checked(0, true);
+						item->set_metadata(1, default_type);
 						name = name.validate_filename();
 						String path = p_path.path_join(name);
 						if (external_extension_type->get_selected() == 0) {
@@ -1524,8 +1567,23 @@ void SceneImportSettingsDialog::_save_dir_confirm() {
 
 		switch (current_action) {
 			case ACTION_EXTRACT_MATERIALS: {
+				int type = item->get_metadata(1);
+
 				ERR_CONTINUE(!material_map.has(id));
 				MaterialData &md = material_map[id];
+
+				switch (type) {
+					case MATERIAL_TYPE_ORM: {
+						// TODO: Convert the StandardMaterial3D to an ORMMaterial3D instead of making a new one.
+						// Unsure if this is actually easily possible.
+						md.material = Ref<ORMMaterial3D>(memnew(ORMMaterial3D));
+					} break;
+					case MATERIAL_TYPE_SHADER: {
+						md.material = Ref<ShaderMaterial>(memnew(ShaderMaterial));
+					} break;
+					default:
+						break;
+				}
 
 				Error err = ResourceSaver::save(md.material, path);
 				if (err != OK) {
@@ -1835,6 +1893,14 @@ SceneImportSettingsDialog::SceneImportSettingsDialog() {
 	external_extension_type->add_item(TTR("Binary: *.res"));
 	external_path_tree->set_hide_root(true);
 	add_child(save_path);
+
+	material_extract_type_menu = memnew(PopupMenu);
+	material_extract_type_menu->connect("id_pressed", callable_mp(this, &SceneImportSettingsDialog::_set_material_type_callback));
+	material_extract_type_menu->connect("close_requested", callable_mp((Window *)material_extract_type_menu, &Window::hide));
+	material_extract_type_menu->add_item("StandardMaterial3D");
+	material_extract_type_menu->add_item("ORMMaterial3D");
+	material_extract_type_menu->add_item("ShaderMaterial");
+	external_path_tree->add_child(material_extract_type_menu);
 
 	item_save_path = memnew(EditorFileDialog);
 	item_save_path->set_file_mode(EditorFileDialog::FILE_MODE_SAVE_FILE);
